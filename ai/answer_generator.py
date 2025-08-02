@@ -1,37 +1,20 @@
 import os
-import requests
-from openai import OpenAI  
+from openai import OpenAI
 
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-BACKEND_URL = "http://localhost:3000" 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")  # Or Gemini API key
-
-def match_question(question: str) -> str:
-    
-    response = requests.get(
-        f"{BACKEND_URL}/answers",
-        params={"question": question}
-    )
-    
-    if response.status_code == 200 and response.json().get("answer"):
-        return response.json()["answer"]  # Use stored answer
-    
- 
+def generate_answer(question, context=None):
     client = OpenAI(api_key=OPENAI_API_KEY)
     
+    prompt = f"Answer this job application question: {question}"
+    if context:
+        prompt += f"\n\nContext: {context}"
+
     response = client.chat.completions.create(
         model="gpt-4",
-        messages=[{
-            "role": "user",
-            "content": f"Answer this job application question: {question}"
-        }]
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.7,
+        max_tokens=150
     )
     
-    generated_answer = response.choices[0].message.content
-    
-    requests.post(
-        f"{BACKEND_URL}/answers",
-        json={"question": question, "answer": generated_answer}
-    )
-    
-    return generated_answer
+    return response.choices[0].message.content.strip()
