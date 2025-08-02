@@ -1,0 +1,65 @@
+🧠 Job Application Assistant AI Bot
+
+An AI-powered assistant that automatically fills out repeated questions in job applications across Workday job portals, based on your previously submitted answers.
+
+This tool is designed to reduce repetitive work by recognizing common application forms, auto-filling known responses, and streamlining the job application process.
+
+
+
+🚀 Features
+
+ 🔁 Reusable Answer Engine 
+  Remembers your responses to common questions and auto-fills them on similar forms.
+
+ 🧠 LLM-Enhanced Question Matching  
+  Uses GPT-4 to classify and match similar questions across different job portals.
+
+ 🤖 Automated Form Filling
+  Navigates and fills job application forms using Puppeteer for Workday-based job sites.
+
+ ☁️ Cloud Backend (GCP)  
+  Stores Q&A pairs using Google Cloud Firestore and handles backend tasks with Cloud Functions.
+
+
+
+🛠️ Tech Stack
+
+ Languages: Python, Node.js  
+ AI: GPT-4 (OpenAI API)  
+ Automation: Puppeteer (Node.js)  
+ Cloud: Google Cloud Functions, Firestore  
+ Database: Firestore (NoSQL)
+
+
+ 📝 How It Works
+
+1. User manually answers questions in the first Workday job application.
+2. Bot stores these Q&A pairs securely.
+3. When the user visits a new job application with similar questions, the bot auto-fills the answers.
+4. GPT-4 is used to detect minor variations in question wording and apply the correct stored answers.
+
+
+
+📦 Project Status
+
+- ✅ Q&A storage and retrieval complete  
+- ✅ Workday form parsing and Puppeteer-based automation in place  
+- 🔄 GPT-4 integration for semantic question matching in progress  
+- ⏳ Currently supports **Workday only** (support for more portals planned)
+
+
+
+📷 Demo
+
+Coming soon: GIF or short video walkthrough showing the bot auto-filling a job application form.
+
+
+
+ ⚠️ Disclaimer
+
+This is a personal project intended for learning and productivity purposes. Do not use on job portals that prohibit automated submissions. Always review final submissions before applying.
+
+
+📬 Contact
+
+Created by Chuck Chow – feel free to reach out via 
