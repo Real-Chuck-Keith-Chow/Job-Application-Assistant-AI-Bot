@@ -1,26 +1,27 @@
-const puppeteer = require('puppeteer');
-const logger = require('../utils/logger');
+const puppeteer = require("puppeteer");
+const logger = require("../utils/logger");
 
 class BrowserLauncher {
   static async launch(config = {}) {
     const defaults = {
-      headless: process.env.NODE_ENV === 'production',
+      headless: process.env.NODE_ENV === "production" ? "new" : false,
       ignoreHTTPSErrors: true,
+      executablePath: process.env.CHROME_PATH,
       args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--window-size=1920,1080'
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        `--window-size=${process.env.WINDOW_SIZE || "1200,1000"}`
       ]
     };
 
     try {
       const browser = await puppeteer.launch({ ...defaults, ...config });
-      logger.info('Browser launched successfully');
+      logger.info("Browser launched successfully");
       return browser;
     } catch (error) {
       logger.error(`Browser launch failed: ${error.message}`);
-      throw new Error('Failed to launch browser');
+      throw new Error("Failed to launch browser");
     }
   }
 
@@ -33,8 +34,10 @@ class BrowserLauncher {
 
   static async close(browser) {
     try {
-      await browser.close();
-      logger.info('Browser closed successfully');
+      if (browser?.isConnected()) {
+        await browser.close();
+        logger.info("Browser closed successfully");
+      }
     } catch (error) {
       logger.error(`Browser close failed: ${error.message}`);
     }
