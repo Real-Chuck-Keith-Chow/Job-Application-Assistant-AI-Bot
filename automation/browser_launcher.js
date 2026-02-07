@@ -1,13 +1,37 @@
+"use strict";
+
 const puppeteer = require("puppeteer");
 const logger = require("../utils/logger");
+
+function resolveHeadlessMode() {
+  // Env vars are strings; normalize carefully
+  const env = process.env.PUPPETEER_HEADLESS;
+
+  if (process.env.NODE_ENV !== "production") {
+    return false;
+  }
+
+  if (env === undefined) {
+    // Default for prod
+    return "new";
+  }
+
+  if (env === "false" || env === "0") {
+    return false;
+  }
+
+  if (env === "true" || env === "1") {
+    return true;
+  }
+
+  // Allow advanced values like "new"
+  return env;
+}
 
 class BrowserLauncher {
   static async launch(config = {}) {
     const defaults = {
-      headless:
-        process.env.NODE_ENV === "production"
-          ? (process.env.PUPPETEER_HEADLESS || "new")
-          : false,
+      headless: resolveHeadlessMode(),
       ignoreHTTPSErrors: true,
       executablePath: process.env.CHROME_PATH,
       args: [
@@ -34,12 +58,14 @@ class BrowserLauncher {
     }
 
     const page = await browser.newPage();
+
     await page.setDefaultNavigationTimeout(
       Number(process.env.NAV_TIMEOUT_MS) || 60000
     );
     await page.setDefaultTimeout(
       Number(process.env.ACTION_TIMEOUT_MS) || 30000
     );
+
     return page;
   }
 
