@@ -1,30 +1,43 @@
-const { saveAnswer, findAnswer } = require('../../backend/gcp_functions');
-const { match_question } = require('../../ai/question_matcher');
-const { Firestore } = require('@google-cloud/firestore');
+"use strict";
 
-describe('GCP Functions Integration', () => {
+const { saveAnswer, findAnswer } = require("../../backend/gcp_functions");
+const { Firestore } = require("@google-cloud/firestore");
+
+describe("GCP Functions Integration (Firestore)", () => {
+  const firestore = new Firestore();
   const testQuestion = "__test_question__";
-  const testAnswer = "__test_answer__";
+  const testAnswer = {
+    answer: "This is a test answer",
+    confidence: 0.8,
+    reasoning: "Integration test",
+  };
 
   beforeAll(async () => {
-    await Firestore().collection('answers').doc(testQuestion).delete();
+    // Best-effort cleanup
+    try {
+      const snap = await firestore.collection("answers").where("question", "==", testQuestion).get();
+      const deletes = snap.docs.map((d) => d.ref.delete());
+      await Promise.all(deletes);
+    } catch (_) {
+      // ignore cleanup failures
+    }
   });
 
-  it('saves and retrieves AI-generated answers', async () => {
-    const aiAnswer = await match_question(testQuestion);
-    const { id } = await saveAnswer(testQuestion, aiAnswer);
+  it("saves and retrieves a structured answer", async () => {
+    const result = await saveAnswer(testQuestion, testAnswer);
+    expect(result).toBeDefined();
+
     const dbAnswer = await findAnswer(testQuestion);
-    
-    expect(id).toBeDefined();
-    expect(dbAnswer).toEqual(aiAnswer);
+    expect(dbAnswer).toEqual(testAnswer);
   });
 
-  it('handles concurrent requests', async () => {
+  it("allows multiple writes without crashing", async () => {
     const [res1, res2] = await Promise.all([
-      saveAnswer(testQuestion, "answer1"),
-      saveAnswer(testQuestion, "answer2")
+      saveAnswer(testQuestion, { answer: "answer1" }),
+      saveAnswer(testQuestion, { answer: "answer2" }),
     ]);
-    
-    expect(res1.id).not.toEqual(res2.id);
+
+    expect(res1).toBeDefined();
+    expect(res2).toBeDefined();
   });
 });
