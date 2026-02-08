@@ -1,24 +1,18 @@
+
 "use strict";
 
 const BrowserLauncher = require("./browser_launcher");
 const logger = require("../utils/logger");
 
-class WorkdayParser {
-  static _stamp() {
-    const d = new Date();
-    const pad = (n) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(
-      d.getHours()
-    )}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
-  }
+const STAMP = () => {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(
+    d.getMinutes()
+  )}-${pad(d.getSeconds())}`;
+};
 
-  /**
-   * Parse a Workday job application page and extract questions + field selectors.
-   *
-   * @param {string} jobUrl
-   * @param {object} options
-   * @returns {Promise<{success: boolean, questions?: any[], error?: string}>}
-   */
+class WorkdayParser {
   static async parse(jobUrl, options = {}) {
     const {
       waitUntil = "networkidle2",
@@ -38,29 +32,19 @@ class WorkdayParser {
 
       await this._dismissCookies(page, cookieAcceptSelector);
 
-      // Workday pages sometimes render question content after initial load.
-      // Waiting briefly for question text to appear improves reliability.
-      try {
-        await page.waitForSelector(questionTextSelector, { timeout: 10000 });
-      } catch (_) {
-        logger.debug("No question text selector found quickly; continuing anyway");
-      }
+      // best-effort: don’t fail if questions render late
+      await page.waitForSelector(questionTextSelector, { timeout: 10000 }).catch(() => {});
 
-      const sections = await this._extractFormSections(page, sectionSelector);
-      const questions = await this._extractQuestions(page, sections, questionTextSelector);
+      const sectionIds = await this._extractSectionIds(page, sectionSelector);
+      const questions = await this._extractQuestions(page, sectionIds, questionTextSelector);
 
       return { success: true, questions };
     } catch (error) {
       logger.error(`Workday parsing failed: ${error.message}`);
 
-      try {
-        await page.screenshot({
-          path: `${errorScreenshotPrefix}-${this._stamp()}.png`,
-          fullPage: true,
-        });
-      } catch (_) {
-        // ignore screenshot failures
-      }
+      await page
+        .screenshot({ path: `${errorScreenshotPrefix}-${STAMP()}.png`, fullPage: true })
+        .catch(() => {});
 
       return { success: false, error: error.message };
     } finally {
@@ -68,28 +52,22 @@ class WorkdayParser {
     }
   }
 
-  static async _dismissCookies(page, cookieAcceptSelector) {
-    try {
-      await page.waitForSelector(cookieAcceptSelector, { timeout: 5000 });
-      await page.click(cookieAcceptSelector);
-    } catch (_) {
-      logger.debug("No cookie banner found");
-    }
+  static async _dismissCookies(page, selector) {
+    await page
+      .waitForSelector(selector, { timeout: 5000 })
+      .then(() => page.click(selector))
+      .catch(() => logger.debug("No cookie banner found"));
   }
 
-  static async _extractFormSections(page, sectionSelector) {
-    return page.evaluate((selector) => {
-      return Array.from(document.querySelectorAll(selector))
-        .map((section) => section?.id)
-        .filter(Boolean);
-    }, sectionSelector);
+  static async _extractSectionIds(page, selector) {
+    return page.$$eval(selector, (sections) => sections.map((s) => s.id).filter(Boolean));
   }
 
   static async _extractQuestions(page, sectionIds, questionTextSelector) {
-    const questions = [];
+    const out = [];
 
-    for (const sectionId of sectionIds) {
-      const sectionQuestions = await page.evaluate(
+    for (const id of sectionIds) {
+      const rows = await page.evaluate(
         ({ id, qSel }) => {
           const section = document.getElementById(id);
           if (!section) return [];
@@ -98,61 +76,51 @@ class WorkdayParser {
             if (!el) return null;
             const tag = el.tagName.toLowerCase();
 
-            // Prefer stable selectors
             if (el.id) return `#${CSS.escape(el.id)}`;
 
-            const name = el.getAttribute("name");
-            if (name) return `${tag}[name="${CSS.escape(name)}"]`;
+            const attrs = [
+              ["name", "name"],
+              ["aria-label", "aria-label"],
+              ["data-qa", "data-qa"],
+              ["data-automation-id", "data-automation-id"],
+            ];
 
-            const aria = el.getAttribute("aria-label");
-            if (aria) return `${tag}[aria-label="${CSS.escape(aria)}"]`;
+            for (const [attr, key] of attrs) {
+              const val = el.getAttribute(attr);
+              if (val) return `${tag}[${key}="${CSS.escape(val)}"]`;
+            }
 
-            const dataQa = el.getAttribute("data-qa");
-            if (dataQa) return `${tag}[data-qa="${CSS.escape(dataQa)}"]`;
-
-            const dataAid = el.getAttribute("data-automation-id");
-            if (dataAid) return `${tag}[data-automation-id="${CSS.escape(dataAid)}"]`;
-
-            // Last resort: just the tag (may match multiple)
             return tag;
           };
 
           const pickField = (container) => {
             if (!container) return { fieldSelector: null, fieldTag: null };
 
-            // Workday tends to use these fields in question containers
             const field =
               container.querySelector("textarea") ||
               container.querySelector("input[type='text']") ||
               container.querySelector("input:not([type])") ||
               container.querySelector("select");
 
-            if (!field) return { fieldSelector: null, fieldTag: null };
-
-            return {
-              fieldSelector: buildSelector(field),
-              fieldTag: field.tagName.toLowerCase(),
-            };
+            return field
+              ? { fieldSelector: buildSelector(field), fieldTag: field.tagName.toLowerCase() }
+              : { fieldSelector: null, fieldTag: null };
           };
 
-          const nodes = Array.from(section.querySelectorAll(qSel));
-
-          return nodes
+          return Array.from(section.querySelectorAll(qSel))
             .map((q) => {
               const text = (q?.innerText || "").trim();
               if (!text) return null;
 
-              // IMPORTANT: prefix match, not equals match
               const container = q.closest('[data-automation-id^="question-"]');
               const aid = container?.dataset?.automationId || "";
 
-              // Derive a "type" from the automation-id when possible
-              let type = "text";
-              if (aid) {
-                type = aid.includes("-") ? aid.split("-").slice(1).join("-") || "text" : aid;
-              }
+              const type = aid
+                ? aid.includes("-")
+                  ? aid.split("-").slice(1).join("-") || "text"
+                  : aid
+                : "text";
 
-              // Try to grab a stable label too (helps debugging)
               const label =
                 (container?.querySelector('[data-automation-id="fieldLabel"]')?.innerText || "")
                   .trim() || null;
@@ -170,14 +138,13 @@ class WorkdayParser {
             })
             .filter(Boolean);
         },
-        { id: sectionId, qSel: questionTextSelector }
+        { id, qSel: questionTextSelector }
       );
 
-      questions.push(...sectionQuestions);
+      out.push(...rows);
     }
 
-    // Keep only entries that are usable (at least has question text + a container)
-    return questions.filter((q) => q.text && q.containerId);
+    return out.filter((q) => q.text && q.containerId);
   }
 }
 
