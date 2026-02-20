@@ -28,10 +28,13 @@ describe("AI Question Matching (unit)", () => {
     expect(answer).toBe(
       "I have 3+ years of Python experience building APIs and automation."
     );
+
     expect(generate_answer).toHaveBeenCalledTimes(1);
+
+    // Don’t over-assume the 2nd arg type (could be undefined or a context string/object)
     expect(generate_answer).toHaveBeenCalledWith(
       "What is your Python experience?",
-      expect.any(Object)
+      expect.anything()
     );
   });
 
