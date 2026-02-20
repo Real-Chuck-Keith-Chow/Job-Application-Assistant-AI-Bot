@@ -4,9 +4,11 @@
   "main": "api_routes.js",
   "scripts": {
     "start": "node -r dotenv/config api_routes.js",
-    "test": "jest",
-    "test:unit": "jest tests/unit",
-    "test:integration": "jest tests/integration"
+
+    "test": "npm run test:unit",
+    "test:unit": "NODE_ENV=test jest tests/unit",
+    "test:integration": "NODE_ENV=test jest tests/integration",
+    "test:all": "NODE_ENV=test jest"
   },
   "dependencies": {
     "@google-cloud/firestore": "^7.0.0",
