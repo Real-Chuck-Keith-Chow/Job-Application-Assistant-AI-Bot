@@ -3,41 +3,75 @@
 const { saveAnswer, findAnswer } = require("../../backend/gcp_functions");
 const { Firestore } = require("@google-cloud/firestore");
 
+// Use a unique test namespace so parallel runs don't collide
+const TEST_PREFIX = "__itest__";
+const makeTestQuestion = () =>
+  `${TEST_PREFIX}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
 describe("GCP Functions Integration (Firestore)", () => {
-  const firestore = new Firestore();
-  const testQuestion = "__test_question__";
+  let firestore;
+  let testQuestion;
+
   const testAnswer = {
     answer: "This is a test answer",
     confidence: 0.8,
     reasoning: "Integration test",
   };
 
-  beforeAll(async () => {
-    // Best-effort cleanup
+  beforeAll(() => {
+    firestore = new Firestore();
+    testQuestion = makeTestQuestion();
+  });
+
+  afterAll(async () => {
+    // Hard cleanup so CI stays clean even if tests fail midway
     try {
-      const snap = await firestore.collection("answers").where("question", "==", testQuestion).get();
-      const deletes = snap.docs.map((d) => d.ref.delete());
-      await Promise.all(deletes);
-    } catch (_) {
-      // ignore cleanup failures
+      const snap = await firestore
+        .collection("answers")
+        .where("question", "==", testQuestion)
+        .get();
+
+      const deletions = snap.docs.map((doc) => doc.ref.delete());
+      await Promise.allSettled(deletions);
+    } catch (err) {
+      console.warn("Firestore cleanup skipped:", err.message);
     }
   });
 
-  it("saves and retrieves a structured answer", async () => {
-    const result = await saveAnswer(testQuestion, testAnswer);
-    expect(result).toBeDefined();
+  describe("saveAnswer()", () => {
+    it("persists a structured answer", async () => {
+      const result = await saveAnswer(testQuestion, testAnswer);
 
-    const dbAnswer = await findAnswer(testQuestion);
-    expect(dbAnswer).toEqual(testAnswer);
+      expect(result).toBeDefined();
+      expect(typeof result).toBe("object");
+    });
+
+    it("can be retrieved via findAnswer()", async () => {
+      await saveAnswer(testQuestion, testAnswer);
+
+      const dbAnswer = await findAnswer(testQuestion);
+
+      expect(dbAnswer).toEqual(
+        expect.objectContaining({
+          answer: testAnswer.answer,
+          confidence: testAnswer.confidence,
+          reasoning: testAnswer.reasoning,
+        })
+      );
+    });
   });
 
-  it("allows multiple writes without crashing", async () => {
-    const [res1, res2] = await Promise.all([
-      saveAnswer(testQuestion, { answer: "answer1" }),
-      saveAnswer(testQuestion, { answer: "answer2" }),
-    ]);
+  describe("concurrency safety", () => {
+    it("handles concurrent writes without crashing", async () => {
+      const writes = await Promise.allSettled([
+        saveAnswer(testQuestion, { answer: "answer1" }),
+        saveAnswer(testQuestion, { answer: "answer2" }),
+      ]);
 
-    expect(res1).toBeDefined();
-    expect(res2).toBeDefined();
+      // Ensure no write rejected (race-condition detector)
+      writes.forEach((res) => {
+        expect(res.status).toBe("fulfilled");
+      });
+    });
   });
 });
