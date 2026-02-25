@@ -1,17 +1,28 @@
-const { Firestore } = require('@google-cloud/firestore');
+"use strict";
 
-// Initialize with environment variables (secure)
-const db = new Firestore({
-  projectId: process.env.GOOGLE_CLOUD_PROJECT,
-  keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS
-});
+const { Firestore } = require("@google-cloud/firestore");
 
-// Verify connection
-db.listCollections()
-  .then(() => console.debug('Firestore connected'))
-  .catch((err) => {
-    console.error('Firestore connection failed:', err);
-    process.exit(1);
-  });
+let db;
 
-module.exports = db;
+/**
+ * Returns a singleton Firestore instance.
+ * Safe for Cloud Functions and local development.
+ */
+function getFirestore() {
+  if (db) return db;
+
+  const config = {
+    projectId: process.env.GOOGLE_CLOUD_PROJECT,
+  };
+
+  // Only use key file locally (not in GCP runtime)
+  if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    config.keyFilename = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  }
+
+  db = new Firestore(config);
+
+  return db;
+}
+
+module.exports = getFirestore();
