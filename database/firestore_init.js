@@ -11,18 +11,20 @@ let db;
 function getFirestore() {
   if (db) return db;
 
-  const config = {
-    projectId: process.env.GOOGLE_CLOUD_PROJECT,
-  };
+  const config = {};
 
-  // Only use key file locally (not in GCP runtime)
+  // projectId is optional; Firestore can infer it in most GCP setups
+  if (process.env.GOOGLE_CLOUD_PROJECT) {
+    config.projectId = process.env.GOOGLE_CLOUD_PROJECT;
+  }
+
+  // Only use key file locally (avoid overriding default creds in GCP runtime)
   if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
     config.keyFilename = process.env.GOOGLE_APPLICATION_CREDENTIALS;
   }
 
   db = new Firestore(config);
-
   return db;
 }
 
-module.exports = getFirestore();
+module.exports = { getFirestore };
