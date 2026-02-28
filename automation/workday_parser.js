@@ -1,16 +1,7 @@
-
 "use strict";
 
 const BrowserLauncher = require("./browser_launcher");
 const logger = require("../utils/logger");
-
-const STAMP = () => {
-  const d = new Date();
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(
-    d.getMinutes()
-  )}-${pad(d.getSeconds())}`;
-};
 
 class WorkdayParser {
   static async parse(jobUrl, options = {}) {
@@ -32,7 +23,7 @@ class WorkdayParser {
 
       await this._dismissCookies(page, cookieAcceptSelector);
 
-      // best-effort: don’t fail if questions render late
+      // Best-effort: don’t fail if questions render late
       await page.waitForSelector(questionTextSelector, { timeout: 10000 }).catch(() => {});
 
       const sectionIds = await this._extractSectionIds(page, sectionSelector);
@@ -43,7 +34,7 @@ class WorkdayParser {
       logger.error(`Workday parsing failed: ${error.message}`);
 
       await page
-        .screenshot({ path: `${errorScreenshotPrefix}-${STAMP()}.png`, fullPage: true })
+        .screenshot({ path: `${errorScreenshotPrefix}-${Date.now()}.png`, fullPage: true })
         .catch(() => {});
 
       return { success: false, error: error.message };
@@ -56,7 +47,7 @@ class WorkdayParser {
     await page
       .waitForSelector(selector, { timeout: 5000 })
       .then(() => page.click(selector))
-      .catch(() => logger.debug("No cookie banner found"));
+      .catch(() => {});
   }
 
   static async _extractSectionIds(page, selector) {
@@ -75,32 +66,23 @@ class WorkdayParser {
           const buildSelector = (el) => {
             if (!el) return null;
             const tag = el.tagName.toLowerCase();
-
             if (el.id) return `#${CSS.escape(el.id)}`;
 
-            const attrs = [
-              ["name", "name"],
-              ["aria-label", "aria-label"],
-              ["data-qa", "data-qa"],
-              ["data-automation-id", "data-automation-id"],
-            ];
+            const aid = el.getAttribute("data-automation-id");
+            if (aid) return `${tag}[data-automation-id="${CSS.escape(aid)}"]`;
 
-            for (const [attr, key] of attrs) {
-              const val = el.getAttribute(attr);
-              if (val) return `${tag}[${key}="${CSS.escape(val)}"]`;
-            }
+            const name = el.getAttribute("name");
+            if (name) return `${tag}[name="${CSS.escape(name)}"]`;
 
             return tag;
           };
 
           const pickField = (container) => {
-            if (!container) return { fieldSelector: null, fieldTag: null };
-
             const field =
-              container.querySelector("textarea") ||
-              container.querySelector("input[type='text']") ||
-              container.querySelector("input:not([type])") ||
-              container.querySelector("select");
+              container?.querySelector("textarea") ||
+              container?.querySelector("input[type='text']") ||
+              container?.querySelector("input:not([type])") ||
+              container?.querySelector("select");
 
             return field
               ? { fieldSelector: buildSelector(field), fieldTag: field.tagName.toLowerCase() }
@@ -113,28 +95,18 @@ class WorkdayParser {
               if (!text) return null;
 
               const container = q.closest('[data-automation-id^="question-"]');
-              const aid = container?.dataset?.automationId || "";
+              if (!container?.id) return null;
 
-              const type = aid
-                ? aid.includes("-")
-                  ? aid.split("-").slice(1).join("-") || "text"
-                  : aid
-                : "text";
+              const aid = container.dataset?.automationId || "";
+              const type = aid.includes("-") ? aid.split("-").slice(1).join("-") : aid || "text";
 
               const label =
-                (container?.querySelector('[data-automation-id="fieldLabel"]')?.innerText || "")
+                (container.querySelector('[data-automation-id="fieldLabel"]')?.innerText || "")
                   .trim() || null;
 
               const { fieldSelector, fieldTag } = pickField(container);
 
-              return {
-                text,
-                label,
-                type,
-                containerId: container?.id || null,
-                fieldSelector,
-                fieldTag,
-              };
+              return { text, label, type, containerId: container.id, fieldSelector, fieldTag };
             })
             .filter(Boolean);
         },
@@ -144,7 +116,7 @@ class WorkdayParser {
       out.push(...rows);
     }
 
-    return out.filter((q) => q.text && q.containerId);
+    return out;
   }
 }
 
