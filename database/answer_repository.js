@@ -1,8 +1,18 @@
 "use strict";
 
+const crypto = require("crypto");
 const { getFirestore } = require("./firestore_init");
 
 const COLLECTION = "answers";
+
+function normalizeQuestion(q) {
+  return String(q ?? "").trim();
+}
+
+function questionId(q) {
+  // stable, short, Firestore-safe doc id
+  return crypto.createHash("sha256").update(q).digest("hex").slice(0, 32);
+}
 
 class AnswerRepository {
   constructor() {
@@ -10,35 +20,45 @@ class AnswerRepository {
     this.collection = this.db.collection(COLLECTION);
   }
 
-  async save(question, payload) {
-    if (!question) throw new Error("Question is required");
+  async save(question, payload = {}) {
+    const q = normalizeQuestion(question);
+    if (!q) throw new Error("Question is required");
 
-    const docRef = this.collection.doc(question);
+    const id = questionId(q);
+    const docRef = this.collection.doc(id);
 
     const data = {
-      question,
+      question: q,
       ...payload,
       updatedAt: new Date(),
     };
 
     await docRef.set(data, { merge: true });
-    return data;
+
+    // Set createdAt only if missing (no overwrite)
+    await docRef.set({ createdAt: new Date() }, { merge: true });
+
+    return { id, ...data };
   }
 
   async find(question) {
-    if (!question) return null;
+    const q = normalizeQuestion(question);
+    if (!q) return null;
 
-    const doc = await this.collection.doc(question).get();
+    const id = questionId(q);
+    const doc = await this.collection.doc(id).get();
     if (!doc.exists) return null;
 
-    const { question: _, ...rest } = doc.data();
+    const { question: _ignored, ...rest } = doc.data() || {};
     return rest;
   }
 
   async delete(question) {
-    if (!question) return;
+    const q = normalizeQuestion(question);
+    if (!q) return;
 
-    await this.collection.doc(question).delete();
+    const id = questionId(q);
+    await this.collection.doc(id).delete();
   }
 }
 
