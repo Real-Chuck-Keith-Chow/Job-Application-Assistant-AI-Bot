@@ -22,9 +22,7 @@ class WorkdayParser {
       await page.goto(jobUrl, { waitUntil, timeout: timeoutMs });
 
       await this._dismissCookies(page, cookieAcceptSelector);
-
-      // Best-effort: don’t fail if questions render late
-      await page.waitForSelector(questionTextSelector, { timeout: 10000 }).catch(() => {});
+      await this._waitForQuestions(page, questionTextSelector);
 
       const sectionIds = await this._extractSectionIds(page, sectionSelector);
       const questions = await this._extractQuestions(page, sectionIds, questionTextSelector);
@@ -34,7 +32,10 @@ class WorkdayParser {
       logger.error(`Workday parsing failed: ${error.message}`);
 
       await page
-        .screenshot({ path: `${errorScreenshotPrefix}-${Date.now()}.png`, fullPage: true })
+        .screenshot({
+          path: `${errorScreenshotPrefix}-${Date.now()}.png`,
+          fullPage: true,
+        })
         .catch(() => {});
 
       return { success: false, error: error.message };
@@ -50,29 +51,43 @@ class WorkdayParser {
       .catch(() => {});
   }
 
+  static async _waitForQuestions(page, selector) {
+    await page.waitForSelector(selector, { timeout: 10000 }).catch(() => {});
+  }
+
   static async _extractSectionIds(page, selector) {
-    return page.$$eval(selector, (sections) => sections.map((s) => s.id).filter(Boolean));
+    return page.$$eval(selector, (sections) =>
+      sections.map((section) => section.id).filter(Boolean)
+    );
   }
 
   static async _extractQuestions(page, sectionIds, questionTextSelector) {
-    const out = [];
+    const questions = [];
 
-    for (const id of sectionIds) {
+    for (const sectionId of sectionIds) {
       const rows = await page.evaluate(
-        ({ id, qSel }) => {
-          const section = document.getElementById(id);
+        ({ sectionId, questionSelector }) => {
+          const section = document.getElementById(sectionId);
           if (!section) return [];
 
-          const buildSelector = (el) => {
-            if (!el) return null;
-            const tag = el.tagName.toLowerCase();
-            if (el.id) return `#${CSS.escape(el.id)}`;
+          const buildSelector = (element) => {
+            if (!element) return null;
 
-            const aid = el.getAttribute("data-automation-id");
-            if (aid) return `${tag}[data-automation-id="${CSS.escape(aid)}"]`;
+            const tag = element.tagName.toLowerCase();
 
-            const name = el.getAttribute("name");
-            if (name) return `${tag}[name="${CSS.escape(name)}"]`;
+            if (element.id) {
+              return `#${CSS.escape(element.id)}`;
+            }
+
+            const automationId = element.getAttribute("data-automation-id");
+            if (automationId) {
+              return `${tag}[data-automation-id="${CSS.escape(automationId)}"]`;
+            }
+
+            const name = element.getAttribute("name");
+            if (name) {
+              return `${tag}[name="${CSS.escape(name)}"]`;
+            }
 
             return tag;
           };
@@ -84,39 +99,57 @@ class WorkdayParser {
               container?.querySelector("input:not([type])") ||
               container?.querySelector("select");
 
-            return field
-              ? { fieldSelector: buildSelector(field), fieldTag: field.tagName.toLowerCase() }
-              : { fieldSelector: null, fieldTag: null };
+            if (!field) {
+              return { fieldSelector: null, fieldTag: null };
+            }
+
+            return {
+              fieldSelector: buildSelector(field),
+              fieldTag: field.tagName.toLowerCase(),
+            };
           };
 
-          return Array.from(section.querySelectorAll(qSel))
-            .map((q) => {
-              const text = (q?.innerText || "").trim();
+          const deriveType = (automationId) => {
+            if (!automationId) return "text";
+
+            const parts = automationId.split("-");
+            return parts.length > 1 ? parts.slice(1).join("-") : automationId;
+          };
+
+          return Array.from(section.querySelectorAll(questionSelector))
+            .map((questionNode) => {
+              const text = (questionNode?.innerText || "").trim();
               if (!text) return null;
 
-              const container = q.closest('[data-automation-id^="question-"]');
+              const container = questionNode.closest('[data-automation-id^="question-"]');
               if (!container?.id) return null;
 
-              const aid = container.dataset?.automationId || "";
-              const type = aid.includes("-") ? aid.split("-").slice(1).join("-") : aid || "text";
-
-              const label =
-                (container.querySelector('[data-automation-id="fieldLabel"]')?.innerText || "")
-                  .trim() || null;
+              const automationId = container.dataset?.automationId || "";
+              const labelNode = container.querySelector(
+                '[data-automation-id="fieldLabel"]'
+              );
+              const label = labelNode?.innerText?.trim() || null;
 
               const { fieldSelector, fieldTag } = pickField(container);
 
-              return { text, label, type, containerId: container.id, fieldSelector, fieldTag };
+              return {
+                text,
+                label,
+                type: deriveType(automationId),
+                containerId: container.id,
+                fieldSelector,
+                fieldTag,
+              };
             })
             .filter(Boolean);
         },
-        { id, qSel: questionTextSelector }
+        { sectionId, questionSelector: questionTextSelector }
       );
 
-      out.push(...rows);
+      questions.push(...rows);
     }
 
-    return out;
+    return questions;
   }
 }
 
