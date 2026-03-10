@@ -1,39 +1,54 @@
 "use strict";
 
-const fs = require("fs");
+const fs = require("node:fs");
 const { Firestore } = require("@google-cloud/firestore");
 
-let db;
+let db = null;
 
-function getFirestore() {
-  if (db) return db;
-
+function buildFirestoreConfig() {
   const config = {};
+  const {
+    GOOGLE_CLOUD_PROJECT,
+    GOOGLE_APPLICATION_CREDENTIALS,
+    FIRESTORE_EMULATOR_HOST,
+  } = process.env;
 
-  if (process.env.GOOGLE_CLOUD_PROJECT) {
-    config.projectId = process.env.GOOGLE_CLOUD_PROJECT;
+  if (GOOGLE_CLOUD_PROJECT) {
+    config.projectId = GOOGLE_CLOUD_PROJECT;
   }
 
-  if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-    const keyFilename = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-
-    if (!fs.existsSync(keyFilename)) {
-      throw new Error(`Firestore credentials file not found: ${keyFilename}`);
+  // When using the emulator, Firestore does not need service account credentials.
+  if (!FIRESTORE_EMULATOR_HOST && GOOGLE_APPLICATION_CREDENTIALS) {
+    if (!fs.existsSync(GOOGLE_APPLICATION_CREDENTIALS)) {
+      throw new Error(
+        `Firestore credentials file not found: ${GOOGLE_APPLICATION_CREDENTIALS}`
+      );
     }
 
-    config.keyFilename = keyFilename;
+    config.keyFilename = GOOGLE_APPLICATION_CREDENTIALS;
   }
 
-  db = new Firestore(config);
+  return config;
+}
+
+function getFirestore() {
+  if (!db) {
+    db = new Firestore(buildFirestoreConfig());
+  }
+
   return db;
 }
 
-// Useful for isolated tests
 function resetFirestore() {
   db = null;
+}
+
+function hasFirestore() {
+  return db !== null;
 }
 
 module.exports = {
   getFirestore,
   resetFirestore,
+  hasFirestore,
 };
