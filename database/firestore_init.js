@@ -17,7 +17,6 @@ function buildFirestoreConfig() {
     config.projectId = GOOGLE_CLOUD_PROJECT;
   }
 
-  // When using the emulator, Firestore does not need service account credentials.
   if (!FIRESTORE_EMULATOR_HOST && GOOGLE_APPLICATION_CREDENTIALS) {
     if (!fs.existsSync(GOOGLE_APPLICATION_CREDENTIALS)) {
       throw new Error(
