@@ -5,7 +5,7 @@ from typing import Any, Dict, Optional
 
 from openai import OpenAI
 
-# Config via env so you can tweak without code changes
+# Config via env so you can tweak without code changes (still testing) 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 OPENAI_TEMPERATURE = float(os.getenv("OPENAI_TEMPERATURE", "0.4"))
